@@ -3,6 +3,7 @@ import Draggable from 'react-draggable';
 import { Download, Save, Upload, Image as ImageIcon, List, Trash2, Edit2, X, Printer } from 'lucide-react';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
+import { useReactToPrint } from 'react-to-print';
 
 interface CertificateData {
   id: string;
@@ -185,6 +186,43 @@ function App() {
     handlePrintOrPDF(false);
   };
 
+  const workspaceWidthBase = 800; // Named differently to prevent redeclaration
+  const scaleRatio = bgDimensions.width / workspaceWidthBase;
+
+  const getDynamicTitle = () => {
+    // Determine the title dynamically when print is called
+    let name = formData.studentName;
+    return name ? `${name}_Certificate` : 'Certificate';
+  };
+
+  const reactToPrintFn = useReactToPrint({
+    contentRef: certificateRef,
+    documentTitle: getDynamicTitle(),
+    pageStyle: `
+      @page { 
+        size: ${bgDimensions.width}px ${bgDimensions.height}px !important; 
+        margin: 0 !important; 
+      }
+      @media print {
+        body, html { 
+          margin: 0 !important; 
+          padding: 0 !important; 
+          background: white !important;
+          -webkit-print-color-adjust: exact !important; 
+          print-color-adjust: exact !important;
+        }
+        #certificate-print-mount {
+          transform: scale(${scaleRatio}) !important;
+          transform-origin: top left !important;
+        }
+        .cert-text {
+          border: none !important;
+          background: transparent !important;
+        }
+      }
+    `,
+  });
+
   const handlePrintOrPDF = async (isPdfMode = false, overrideName?: string) => {
     if (!certificateRef.current || !backgroundImage) {
         alert("সার্টিফিকেট ব্যাকগ্রাউন্ড প্রয়োজন (Certificate background required)");
@@ -192,103 +230,20 @@ function App() {
     }
 
     if (isPdfMode) {
-      alert("অরিজিনাল কোয়ালিটি এবং টেক্সট ঠিক রাখতে এখন প্রিন্ট ডায়ালগ ওপেন হবে। সেখান থেকে 'Destination' এর জায়গায় 'Save as PDF' সিলেক্ট করে সেভ করুন।");
+      alert("অরিজিনাল টেক্সট ঠিক রাখতে এখন প্রিন্ট ডায়ালগ ওপেন হবে। সেখান থেকে 'Destination' এর জায়গায় 'Save as PDF' সিলেক্ট করে সেভ করুন।");
     }
 
     try {
-      const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
-      const docTitle = name ? `${name}_Certificate` : 'Certificate';
+      if (overrideName) {
+        // Fallback or usage of overrideName if needed
+        document.title = `${overrideName}_Certificate`;
+      }
       
-      const workspaceWidth = 800;
-      const workspaceHeight = Math.round(workspaceWidth * (bgDimensions.height / bgDimensions.width));
-      const scale = bgDimensions.width / workspaceWidth;
-
-      // Ensure main window title changes for PDF filename
-      const originalTitle = document.title;
-      document.title = docTitle;
-      
-      // We will clone the certificate element to avoid modifying the active React DOM directly.
-      const printMount = document.createElement('div');
-      printMount.id = 'print-mount';
-      printMount.innerHTML = certificateRef.current.innerHTML;
-      document.body.appendChild(printMount);
-
-      // Inject a specialized print stylesheet into the main document.
-      // This hides the standard app UI and shows only the cloned certificate scaled perfectly.
-      const styleNode = document.createElement('style');
-      styleNode.innerHTML = `
-        @media screen {
-          #print-mount { display: none !important; }
-        }
-        @media print {
-          body > *:not(#print-mount) {
-            display: none !important;
-          }
-          @page {
-            size: ${bgDimensions.width}px ${bgDimensions.height}px;
-            margin: 0;
-          }
-          body, html {
-            margin: 0 !important;
-            padding: 0 !important;
-            background-color: white !important;
-          }
-          #print-mount {
-            display: block !important;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: ${workspaceWidth}px !important;
-            height: ${workspaceHeight}px !important;
-            transform: scale(${scale});
-            transform-origin: top left;
-            overflow: hidden;
-            background-color: white;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          .cert-text {
-            font-family: 'Bornomala', 'Noto Serif Bengali', serif !important;
-            border: none !important;
-            color: #111827 !important;
-            cursor: default !important;
-            padding: 0px 8px !important;
-          }
-        }
-      `;
-      document.head.appendChild(styleNode);
-
-      // Force synchronous layout recalculation so the browser knows the elements exist for `@media print`
-      window.getComputedStyle(printMount).display;
-
-      const cleanup = () => {
-        document.title = originalTitle;
-        if (document.body.contains(printMount)) {
-          console.log("Cleaning up printMount");
-          document.body.removeChild(printMount);
-        }
-        if (document.head.contains(styleNode)) {
-          document.head.removeChild(styleNode);
-        }
-        window.removeEventListener('afterprint', cleanup);
-      };
-
-      // Best practice for modern browsers
-      window.addEventListener('afterprint', cleanup);
-
-      // Trigger the browser's native print dialg EXACTLY in the same call stack
-      // This guarantees we don't lose the user-gesture token which prevents popup/print blockers
-      window.print();
-      
-      // Fallbacks in case user cancels print and browser doesn't fire `afterprint`
-      setTimeout(cleanup, 120000); // Max 2 minutes
-      window.addEventListener('focus', function focusCleanup() {
-        setTimeout(() => {
-           cleanup();
-           window.removeEventListener('focus', focusCleanup);
-        }, 1000);
-      });
-
+      if (reactToPrintFn) {
+        reactToPrintFn();
+      } else {
+        window.print();
+      }
     } catch (error: any) {
       console.error("Error generating Print/PDF view", error);
       alert(`প্রিন্ট তৈরি করতে সমস্যা হয়েছে: ${error?.message || error}`);
@@ -518,7 +473,7 @@ function App() {
              style={{ width: `${workspaceWidth}px`, height: `${workspaceHeight}px`, border: backgroundImage ? 'none' : '2px dashed #9ca3af' }}>
           
           {/* Certificate Container to capture */}
-          <div ref={certificateRef} className="w-full h-full relative" style={{ width: `${workspaceWidth}px`, height: `${workspaceHeight}px` }}>
+          <div ref={certificateRef} id="certificate-print-mount" className="w-full h-full relative" style={{ width: `${workspaceWidth}px`, height: `${workspaceHeight}px` }}>
             {backgroundImage ? (
               <img src={backgroundImage} alt="Certificate Background" className="w-full h-full object-cover pointer-events-none" />
             ) : (
