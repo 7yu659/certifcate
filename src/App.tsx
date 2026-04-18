@@ -258,22 +258,36 @@ function App() {
       `;
       document.head.appendChild(styleNode);
 
-      // Trigger the browser's native print dialg
-      // Using setTimeout helps the browser register the newly injected DOM & styles.
-      setTimeout(() => {
-        window.print();
-        
-        // Cleanup phase
+      // Force synchronous layout recalculation so the browser knows the elements exist for `@media print`
+      window.getComputedStyle(printMount).display;
+
+      const cleanup = () => {
+        document.title = originalTitle;
+        if (document.body.contains(printMount)) {
+          console.log("Cleaning up printMount");
+          document.body.removeChild(printMount);
+        }
+        if (document.head.contains(styleNode)) {
+          document.head.removeChild(styleNode);
+        }
+        window.removeEventListener('afterprint', cleanup);
+      };
+
+      // Best practice for modern browsers
+      window.addEventListener('afterprint', cleanup);
+
+      // Trigger the browser's native print dialg EXACTLY in the same call stack
+      // This guarantees we don't lose the user-gesture token which prevents popup/print blockers
+      window.print();
+      
+      // Fallbacks in case user cancels print and browser doesn't fire `afterprint`
+      setTimeout(cleanup, 120000); // Max 2 minutes
+      window.addEventListener('focus', function focusCleanup() {
         setTimeout(() => {
-          document.title = originalTitle;
-          if (document.body.contains(printMount)) {
-            document.body.removeChild(printMount);
-          }
-          if (document.head.contains(styleNode)) {
-            document.head.removeChild(styleNode);
-          }
+           cleanup();
+           window.removeEventListener('focus', focusCleanup);
         }, 1000);
-      }, 100);
+      });
 
     } catch (error: any) {
       console.error("Error generating Print/PDF view", error);
