@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Draggable from 'react-draggable';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { Download, Save, Upload, Image as ImageIcon, List, Trash2, Edit2, X } from 'lucide-react';
+import { Download, Save, Upload, Image as ImageIcon, List, Trash2, Edit2, X, Printer } from 'lucide-react';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -58,7 +58,7 @@ const convertToBengaliDate = (dateStr: string) => {
   let formattedStr = dateStr;
   if (dateStr.includes('-') && dateStr.split('-').length === 3) {
     const [year, month, day] = dateStr.split('-');
-    formattedStr = `${day}/${month}/${year}`;
+    formattedStr = `${day}-${month}-${year} ইং`;
   }
   return formattedStr.replace(/[0-9]/g, (d) => bngDigits[parseInt(d)]);
 };
@@ -202,6 +202,58 @@ function App() {
     } catch (error) {
       console.error("Error generating PDF", error);
       alert("PDF তৈরি করতে সমস্যা হয়েছে (Error generating PDF)");
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!certificateRef.current || !backgroundImage) {
+        alert("সার্টিফিকেট ব্যাকগ্রাউন্ড প্রয়োজন (Certificate background required)");
+        return;
+    }
+
+    try {
+      const element = certificateRef.current;
+      const canvas = await html2canvas(element, { 
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Print Certificate</title>
+              <style>
+                body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f3f4f6; }
+                img { max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+                @media print {
+                  body { background-color: white; }
+                  img { box-shadow: none; max-width: 100%; height: auto; }
+                  @page { margin: 0; size: landscape; }
+                }
+              </style>
+            </head>
+            <body>
+              <img src="${imgData}" />
+              <script>
+                window.onload = () => {
+                  setTimeout(() => {
+                    window.print();
+                    window.close();
+                  }, 500);
+                };
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
+    } catch (error) {
+      console.error("Error generating Print", error);
+      alert("প্রিন্ট তৈরি করতে সমস্যা হয়েছে (Error generating Print)");
     }
   };
 
@@ -398,13 +450,23 @@ function App() {
             {isSaving ? "Saving..." : "Save to History"}
           </button>
           
-          <button 
-            onClick={() => handleDownloadPDF()}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center transition-colors shadow-sm"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            Download PDF
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button 
+              onClick={() => handleDownloadPDF()}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center transition-colors shadow-sm"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              PDF
+            </button>
+
+            <button 
+              onClick={handlePrint}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-lg flex items-center justify-center transition-colors shadow-sm"
+            >
+              <Printer className="w-5 h-5 mr-2" />
+              Print
+            </button>
+          </div>
         </div>
       </div>
 
