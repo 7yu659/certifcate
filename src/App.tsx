@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Draggable from 'react-draggable';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { Download, Save, Upload, Image as ImageIcon, List, Trash2, Edit2, X, Printer } from 'lucide-react';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
@@ -17,6 +15,7 @@ interface CertificateData {
   durationStart: string;
   durationEnd: string;
   backgroundImage: string | null;
+  bgDimensions?: { width: number; height: number };
   positions: Record<string, { x: number; y: number }>;
   timestamp: number;
 }
@@ -76,10 +75,12 @@ function App() {
   });
   
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [bgDimensions, setBgDimensions] = useState({ width: 800, height: 600 });
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(defaultPositions);
   const [savedCertificates, setSavedCertificates] = useState<CertificateData[]>([]);
   const [showSavedQueue, setShowSavedQueue] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingBg, setIsUploadingBg] = useState(false);
   const certificateRef = useRef<HTMLDivElement>(null);
   
   const nodeRefs = {
@@ -122,6 +123,7 @@ function App() {
     const certDetails = {
       ...formData,
       backgroundImage,
+      bgDimensions,
       positions,
       timestamp: Date.now(),
     };
@@ -158,6 +160,7 @@ function App() {
       durationEnd: standardizeDateForInput(cert.durationEnd)
     });
     setBackgroundImage(cert.backgroundImage);
+    setBgDimensions(cert.bgDimensions || { width: 800, height: 600 });
     setPositions(cert.positions || defaultPositions);
     setShowSavedQueue(false);
   };
@@ -175,40 +178,21 @@ function App() {
   };
 
   const handleDownloadPDF = async (overrideName?: string) => {
-    if (!certificateRef.current || !backgroundImage) {
-        alert("সার্টিফিকেট ব্যাকগ্রাউন্ড প্রয়োজন (Certificate background required)");
-        return;
-    }
-
-    try {
-      const element = certificateRef.current;
-      const canvas = await html2canvas(element, { 
-        scale: 2,
-        useCORS: true,
-        logging: true
-      });
-      const imgData = canvas.toDataURL('image/png');
-      
-      const pdf = new jsPDF({
-        orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [canvas.width, canvas.height]
-      });
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
-      const filename = name ? `${name}_Certificate.pdf` : 'Certificate.pdf';
-      pdf.save(filename);
-    } catch (error: any) {
-      console.error("Error generating PDF", error);
-      alert(`PDF তৈরি করতে সমস্যা হয়েছে (Error generating PDF): ${error?.message || error}`);
-    }
+    handlePrintOrPDF(true, overrideName);
   };
 
   const handlePrint = async () => {
+    handlePrintOrPDF(false);
+  };
+
+  const handlePrintOrPDF = async (isPdfMode = false, overrideName?: string) => {
     if (!certificateRef.current || !backgroundImage) {
         alert("সার্টিফিকেট ব্যাকগ্রাউন্ড প্রয়োজন (Certificate background required)");
         return;
+    }
+
+    if (isPdfMode) {
+      alert("অরিজিনাল কোয়ালিটি এবং টেক্সট ঠিক রাখতে এখন একটি নতুন পেজ ওপেন হবে। সেখান থেকে 'Destination' এর জায়গায় 'Save as PDF' সিলেক্ট করে সেভ করুন।");
     }
 
     const printWindow = window.open('', '_blank');
@@ -218,40 +202,69 @@ function App() {
     }
 
     try {
-      const element = certificateRef.current;
-      // printWindow.document.write('Loading...');
-
-      const canvas = await html2canvas(element, { 
-        scale: 2,
-        useCORS: true,
-        logging: true
-      });
-      const imgData = canvas.toDataURL('image/png');
+      const certHtml = certificateRef.current.innerHTML;
+      const fontUrl = new URL('Bornomala.ttf', document.baseURI).href;
+      const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
+      const docTitle = name ? `${name}_Certificate` : 'Certificate';
       
+      const workspaceWidth = 800;
+      const workspaceHeight = Math.round(workspaceWidth * (bgDimensions.height / bgDimensions.width));
+      const scale = bgDimensions.width / workspaceWidth;
+
       printWindow.document.open();
-      // ... rest is same
       printWindow.document.write(`
+          <!DOCTYPE html>
           <html>
             <head>
-              <title>Print Certificate</title>
+              <title>${docTitle}</title>
+              <script src="https://cdn.tailwindcss.com"></script>
               <style>
-                body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f3f4f6; }
-                img { max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-                @media print {
-                  body { background-color: white; }
-                  img { box-shadow: none; max-width: 100%; height: auto; }
-                  @page { margin: 0; size: landscape; }
+                @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;500;600;700&display=swap');
+                @font-face {
+                  font-family: 'Bornomala';
+                  src: url('${fontUrl}') format('truetype');
+                }
+                @page { 
+                  size: ${bgDimensions.width}px ${bgDimensions.height}px; 
+                  margin: 0; 
+                }
+                body, html { 
+                  margin: 0; 
+                  padding: 0; 
+                  width: ${bgDimensions.width}px; 
+                  height: ${bgDimensions.height}px; 
+                  background-color: white; 
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                  overflow: hidden;
+                }
+                #print-container {
+                  width: ${workspaceWidth}px;
+                  height: ${workspaceHeight}px;
+                  position: relative;
+                  transform: scale(${scale});
+                  transform-origin: top left;
+                }
+                /* Ensures text remains selectable and exact, removes borders from interactive drag elements */
+                .cert-text {
+                  font-family: 'Bornomala', 'Noto Serif Bengali', serif !important;
+                  border: none !important;
+                  color: #111827 !important;
+                  cursor: default !important;
+                  padding: 0px 8px !important;
                 }
               </style>
             </head>
             <body>
-              <img src="${imgData}" />
+              <div id="print-container">
+                ${certHtml}
+              </div>
               <script>
                 window.onload = () => {
                   setTimeout(() => {
                     window.print();
-                    window.close();
-                  }, 500);
+                    // We don't close the window automatically so the user has time to "Save as PDF" correctly.
+                  }, 800);
                 };
               </script>
             </body>
@@ -259,9 +272,9 @@ function App() {
         `);
       printWindow.document.close();
     } catch (error: any) {
-      console.error("Error generating Print", error);
+      console.error("Error generating Print/PDF view", error);
       if (printWindow) printWindow.close();
-      alert(`প্রিন্ট তৈরি করতে সমস্যা হয়েছে (Error generating Print): ${error?.message || error}`);
+      alert(`প্রিন্ট তৈরি করতে সমস্যা হয়েছে: ${error?.message || error}`);
     }
   };
 
@@ -279,39 +292,33 @@ function App() {
     }));
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: React.Dispatch<React.SetStateAction<string | null>>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new window.Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const maxDim = 1200;
-          let width = img.width;
-          let height = img.height;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            setter(canvas.toDataURL('image/jpeg', 0.6));
-          } else {
-            setter(event.target?.result as string);
-          }
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingBg(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', 'my_preset');
+      
+      try {
+        const res = await fetch('https://api.cloudinary.com/v1_1/dggkvls21/image/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        
+        if (data.secure_url) {
+          const parts = data.secure_url.split('/upload/');
+          const hdUrl = parts[0] + '/upload/q_auto:best,f_auto/' + parts[1];
+          setBackgroundImage(hdUrl);
+          setBgDimensions({ width: data.width, height: data.height });
+        }
+      } catch (err) {
+        console.error("Cloudinary upload failed", err);
+        alert("Image upload failed. Please try again.");
+      } finally {
+        setIsUploadingBg(false);
+      }
     }
   };
 
@@ -324,6 +331,9 @@ function App() {
       const newThana = newThanas.includes(formData.thana) ? formData.thana : (newThanas[0] || '');
       setFormData({ ...formData, district: newDist, thana: newThana });
   };
+
+  const workspaceWidth = 800;
+  const workspaceHeight = Math.round(workspaceWidth * (bgDimensions.height / bgDimensions.width));
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row font-sans">
@@ -345,12 +355,19 @@ function App() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Background Image (ব্যাকগ্রাউন্ড)</label>
             <div className="flex items-center justify-center w-full">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Upload className="w-8 h-8 mb-3 text-gray-400" />
-                        <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Click to upload</span> background</p>
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg transition-colors ${isUploadingBg ? 'bg-gray-100 cursor-wait' : 'cursor-pointer bg-gray-50 hover:bg-gray-100'}`}>
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6 px-2">
+                        {isUploadingBg ? (
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-3"></div>
+                        ) : (
+                          <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                        )}
+                        <p className="mb-2 text-sm text-gray-500 text-center">
+                          <span className="font-semibold">{isUploadingBg ? "Uploading HD Image..." : "Click to upload"}</span> 
+                          {!isUploadingBg && " background"}
+                        </p>
                     </div>
-                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setBackgroundImage)} />
+                    <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploadingBg} />
                 </label>
             </div>
           </div>
@@ -481,10 +498,10 @@ function App() {
       {/* Main Preview Area */}
       <div className="flex-1 overflow-auto bg-gray-200 p-8 flex items-center justify-center min-h-screen">
         <div className="max-w-full relative shadow-2xl bg-white select-none overflow-hidden" 
-             style={{ width: '800px', height: '600px', border: backgroundImage ? 'none' : '2px dashed #9ca3af' }}>
+             style={{ width: `${workspaceWidth}px`, height: `${workspaceHeight}px`, border: backgroundImage ? 'none' : '2px dashed #9ca3af' }}>
           
           {/* Certificate Container to capture */}
-          <div ref={certificateRef} className="w-full h-full relative" style={{ width: '800px', height: '600px' }}>
+          <div ref={certificateRef} className="w-full h-full relative" style={{ width: `${workspaceWidth}px`, height: `${workspaceHeight}px` }}>
             {backgroundImage ? (
               <img src={backgroundImage} alt="Certificate Background" className="w-full h-full object-cover pointer-events-none" />
             ) : (
