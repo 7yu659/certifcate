@@ -1,0 +1,27 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;500;600;700&display=swap');
+
+/* User's custom font - assuming they will upload it to the root/public directory */
+@font-face {
+  font-family: 'Bornomala';
+  src: url('/Bornomala.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+    background-color: #f3f4f6;
+    color: #1f2937;
+    font-family: 'Noto Serif Bengali', sans-serif;
+}
+
+.cert-text {
+  /* It will try Bornomala first. If the file is missing/loading, it will fallback to Noto Serif Bengali */
+  font-family: 'Bornomala', 'Noto Serif Bengali', serif;
+}
