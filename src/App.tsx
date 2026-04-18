@@ -196,12 +196,6 @@ function App() {
     }
 
     try {
-      const parentStyles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map(el => el.outerHTML)
-        .join('\n');
-
-      const certHtml = certificateRef.current.innerHTML;
-      const fontUrl = new URL('Bornomala.ttf', document.baseURI).href;
       const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
       const docTitle = name ? `${name}_Certificate` : 'Certificate';
       
@@ -209,92 +203,77 @@ function App() {
       const workspaceHeight = Math.round(workspaceWidth * (bgDimensions.height / bgDimensions.width));
       const scale = bgDimensions.width / workspaceWidth;
 
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.left = '-9999px';
-      iframe.style.top = '-9999px';
-      iframe.style.width = `${workspaceWidth}px`;
-      iframe.style.height = `${workspaceHeight}px`;
-      iframe.style.border = '0';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentWindow?.document;
-      if (!iframeDoc) throw new Error("Iframe document not accessible");
-
+      // Ensure main window title changes for PDF filename
       const originalTitle = document.title;
       document.title = docTitle;
+      
+      // We will clone the certificate element to avoid modifying the active React DOM directly.
+      const printMount = document.createElement('div');
+      printMount.id = 'print-mount';
+      printMount.innerHTML = certificateRef.current.innerHTML;
+      document.body.appendChild(printMount);
 
-      const printHtml = `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>${docTitle}</title>
-              ${parentStyles}
-              <style>
-                @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;500;600;700&display=swap');
-                @font-face {
-                  font-family: 'Bornomala';
-                  src: url('${fontUrl}') format('truetype');
-                }
-                @page { 
-                  size: ${bgDimensions.width}px ${bgDimensions.height}px; 
-                  margin: 0; 
-                }
-                body, html { 
-                  margin: 0; 
-                  padding: 0; 
-                  width: ${bgDimensions.width}px; 
-                  height: ${bgDimensions.height}px; 
-                  background-color: white; 
-                  -webkit-print-color-adjust: exact;
-                  print-color-adjust: exact;
-                  overflow: hidden;
-                }
-                #print-container {
-                  width: ${workspaceWidth}px;
-                  height: ${workspaceHeight}px;
-                  position: relative;
-                  transform: scale(${scale});
-                  transform-origin: top left;
-                }
-                .cert-text {
-                  font-family: 'Bornomala', 'Noto Serif Bengali', serif !important;
-                  border: none !important;
-                  color: #111827 !important;
-                  cursor: default !important;
-                  padding: 0px 8px !important;
-                }
-              </style>
-            </head>
-            <body>
-              <div id="print-container">
-                ${certHtml}
-              </div>
-              <script>
-                // We use script triggering to ensure the browser has fully processed the document layout
-                window.onload = function() {
-                  // Small delay to ensure external fonts applied
-                  setTimeout(function() {
-                    window.focus();
-                    window.print();
-                  }, 500);
-                };
-              </script>
-            </body>
-          </html>
-      `;
-
-      iframeDoc.open();
-      iframeDoc.write(printHtml);
-      iframeDoc.close();
-
-      // Clean up after enough time for standard printing workflow to complete
-      setTimeout(() => {
-        document.title = originalTitle;
-        if (document.body.contains(iframe)) {
-          document.body.removeChild(iframe);
+      // Inject a specialized print stylesheet into the main document.
+      // This hides the standard app UI and shows only the cloned certificate scaled perfectly.
+      const styleNode = document.createElement('style');
+      styleNode.innerHTML = `
+        @media screen {
+          #print-mount { display: none !important; }
         }
-      }, 15000);
+        @media print {
+          body > *:not(#print-mount) {
+            display: none !important;
+          }
+          @page {
+            size: ${bgDimensions.width}px ${bgDimensions.height}px;
+            margin: 0;
+          }
+          body, html {
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: white !important;
+          }
+          #print-mount {
+            display: block !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: ${workspaceWidth}px !important;
+            height: ${workspaceHeight}px !important;
+            transform: scale(${scale});
+            transform-origin: top left;
+            overflow: hidden;
+            background-color: white;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .cert-text {
+            font-family: 'Bornomala', 'Noto Serif Bengali', serif !important;
+            border: none !important;
+            color: #111827 !important;
+            cursor: default !important;
+            padding: 0px 8px !important;
+          }
+        }
+      `;
+      document.head.appendChild(styleNode);
+
+      // Trigger the browser's native print dialg
+      // Using setTimeout helps the browser register the newly injected DOM & styles.
+      setTimeout(() => {
+        window.print();
+        
+        // Cleanup phase
+        setTimeout(() => {
+          document.title = originalTitle;
+          if (document.body.contains(printMount)) {
+            document.body.removeChild(printMount);
+          }
+          if (document.head.contains(styleNode)) {
+            document.head.removeChild(styleNode);
+          }
+        }, 1000);
+      }, 100);
 
     } catch (error: any) {
       console.error("Error generating Print/PDF view", error);
