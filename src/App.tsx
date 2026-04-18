@@ -184,8 +184,7 @@ function App() {
       const element = certificateRef.current;
       const canvas = await html2canvas(element, { 
         scale: 2,
-        useCORS: true,
-        allowTaint: true,
+        useCORS: true
       });
       const imgData = canvas.toDataURL('image/png');
       
@@ -211,18 +210,24 @@ function App() {
         return;
     }
 
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert("Please allow popups to print. (পপ-আপ এলাউ করুন)");
+      return;
+    }
+
     try {
       const element = certificateRef.current;
+      // printWindow.document.write('Loading...');
+
       const canvas = await html2canvas(element, { 
         scale: 2,
-        useCORS: true,
-        allowTaint: true,
+        useCORS: true
       });
       const imgData = canvas.toDataURL('image/png');
       
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
+      printWindow.document.open();
+      printWindow.document.write(`
           <html>
             <head>
               <title>Print Certificate</title>
@@ -249,10 +254,10 @@ function App() {
             </body>
           </html>
         `);
-        printWindow.document.close();
-      }
+      printWindow.document.close();
     } catch (error) {
       console.error("Error generating Print", error);
+      if (printWindow) printWindow.close();
       alert("প্রিন্ট তৈরি করতে সমস্যা হয়েছে (Error generating Print)");
     }
   };
