@@ -192,16 +192,14 @@ function App() {
     }
 
     if (isPdfMode) {
-      alert("অরিজিনাল কোয়ালিটি এবং টেক্সট ঠিক রাখতে এখন একটি নতুন পেজ ওপেন হবে। সেখান থেকে 'Destination' এর জায়গায় 'Save as PDF' সিলেক্ট করে সেভ করুন।");
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("Please allow popups to print. (পপ-আপ এলাউ করুন)");
-      return;
+      alert("অরিজিনাল কোয়ালিটি এবং টেক্সট ঠিক রাখতে এখন প্রিন্ট ডায়ালগ ওপেন হবে। সেখান থেকে 'Destination' এর জায়গায় 'Save as PDF' সিলেক্ট করে সেভ করুন।");
     }
 
     try {
+      const parentStyles = Array.from(document.head.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
       const certHtml = certificateRef.current.innerHTML;
       const fontUrl = new URL('Bornomala.ttf', document.baseURI).href;
       const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
@@ -211,13 +209,27 @@ function App() {
       const workspaceHeight = Math.round(workspaceWidth * (bgDimensions.height / bgDimensions.width));
       const scale = bgDimensions.width / workspaceWidth;
 
-      printWindow.document.open();
-      printWindow.document.write(`
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '-9999px';
+      iframe.style.width = `${workspaceWidth}px`;
+      iframe.style.height = `${workspaceHeight}px`;
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (!iframeDoc) throw new Error("Iframe document not accessible");
+
+      const originalTitle = document.title;
+      document.title = docTitle;
+
+      const printHtml = `
           <!DOCTYPE html>
           <html>
             <head>
               <title>${docTitle}</title>
-              <script src="https://cdn.tailwindcss.com"></script>
+              ${parentStyles}
               <style>
                 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;500;600;700&display=swap');
                 @font-face {
@@ -245,7 +257,6 @@ function App() {
                   transform: scale(${scale});
                   transform-origin: top left;
                 }
-                /* Ensures text remains selectable and exact, removes borders from interactive drag elements */
                 .cert-text {
                   font-family: 'Bornomala', 'Noto Serif Bengali', serif !important;
                   border: none !important;
@@ -260,20 +271,33 @@ function App() {
                 ${certHtml}
               </div>
               <script>
-                window.onload = () => {
-                  setTimeout(() => {
+                // We use script triggering to ensure the browser has fully processed the document layout
+                window.onload = function() {
+                  // Small delay to ensure external fonts applied
+                  setTimeout(function() {
+                    window.focus();
                     window.print();
-                    // We don't close the window automatically so the user has time to "Save as PDF" correctly.
-                  }, 800);
+                  }, 500);
                 };
               </script>
             </body>
           </html>
-        `);
-      printWindow.document.close();
+      `;
+
+      iframeDoc.open();
+      iframeDoc.write(printHtml);
+      iframeDoc.close();
+
+      // Clean up after enough time for standard printing workflow to complete
+      setTimeout(() => {
+        document.title = originalTitle;
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 15000);
+
     } catch (error: any) {
       console.error("Error generating Print/PDF view", error);
-      if (printWindow) printWindow.close();
       alert(`প্রিন্ট তৈরি করতে সমস্যা হয়েছে: ${error?.message || error}`);
     }
   };
