@@ -184,7 +184,8 @@ function App() {
       const element = certificateRef.current;
       const canvas = await html2canvas(element, { 
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        logging: true
       });
       const imgData = canvas.toDataURL('image/png');
       
@@ -198,9 +199,9 @@ function App() {
       const name = typeof overrideName === 'string' ? overrideName : formData.studentName;
       const filename = name ? `${name}_Certificate.pdf` : 'Certificate.pdf';
       pdf.save(filename);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating PDF", error);
-      alert("PDF তৈরি করতে সমস্যা হয়েছে (Error generating PDF)");
+      alert(`PDF তৈরি করতে সমস্যা হয়েছে (Error generating PDF): ${error?.message || error}`);
     }
   };
 
@@ -222,11 +223,13 @@ function App() {
 
       const canvas = await html2canvas(element, { 
         scale: 2,
-        useCORS: true
+        useCORS: true,
+        logging: true
       });
       const imgData = canvas.toDataURL('image/png');
       
       printWindow.document.open();
+      // ... rest is same
       printWindow.document.write(`
           <html>
             <head>
@@ -255,10 +258,10 @@ function App() {
           </html>
         `);
       printWindow.document.close();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating Print", error);
       if (printWindow) printWindow.close();
-      alert("প্রিন্ট তৈরি করতে সমস্যা হয়েছে (Error generating Print)");
+      alert(`প্রিন্ট তৈরি করতে সমস্যা হয়েছে (Error generating Print): ${error?.message || error}`);
     }
   };
 
@@ -483,7 +486,7 @@ function App() {
           {/* Certificate Container to capture */}
           <div ref={certificateRef} className="w-full h-full relative" style={{ width: '800px', height: '600px' }}>
             {backgroundImage ? (
-              <img src={backgroundImage} alt="Certificate Background" className="w-full h-full object-cover pointer-events-none" crossOrigin="anonymous"/>
+              <img src={backgroundImage} alt="Certificate Background" className="w-full h-full object-cover pointer-events-none" />
             ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 p-8 text-center">
                     <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
